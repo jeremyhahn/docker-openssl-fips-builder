@@ -120,22 +120,8 @@ log "Configuring OpenSSL with FIPS support..."
 
 log "✓ OpenSSL configured successfully"
 
-# Build ONLY the FIPS provider module.
-#
-# Per the official OpenSSL FIPS documentation:
-#   - The FIPS provider module (fips.so) from OpenSSL 3.1.2 is FIPS 140-3
-#     validated.
-#   - That module is COMPATIBLE with ANY OpenSSL 3.x version (3.0 - 3.5+).
-#   - We must NOT replace the system OpenSSL libraries. Instead we copy ONLY
-#     the validated fips.so to the system.
-#
-# This keeps FIPS compliance (the provider is the validated 3.1.2 build) while
-# keeping symbol compatibility (the system's own OpenSSL libraries are used),
-# and it is the approach upstream officially supports:
-#   - https://github.com/openssl/openssl/blob/master/README-FIPS.md
-#   - "You can build openssl-3.5.0, then build openssl-3.1.2, and simply copy
-#      the fips.so module from your openssl-3.1.2 tree into the openssl-3.5.0
-#      tree"
+# Only the FIPS provider module is built, never a complete OpenSSL. See
+# "Why only the provider module" in README.md for the compliance rationale.
 log "Building ONLY the FIPS provider module (not complete OpenSSL)..."
 log "Using $(nproc) CPU cores"
 

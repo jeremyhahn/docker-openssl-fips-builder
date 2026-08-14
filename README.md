@@ -25,6 +25,33 @@ Configure flags:
 - Security hardening: `no-ssl3`, `no-weak-ssl-ciphers`,
   `OPENSSL_TLS_SECURITY_LEVEL=2`
 
+## Why only the provider module
+
+This build produces **only** `fips.so`, never a complete OpenSSL. That is a
+deliberate compliance decision, and it is what makes the version pin above
+cost-free. Per the official OpenSSL FIPS documentation:
+
+- The FIPS provider module built from OpenSSL 3.1.2 is the FIPS 140-3
+  validated one.
+- That module is compatible with **any** OpenSSL 3.x version (3.0 through
+  3.5+).
+- The system's own OpenSSL libraries must **not** be replaced. Only the
+  validated `fips.so` is copied onto the system.
+
+Doing it this way keeps both properties that matter at once: FIPS compliance,
+because the provider is the validated 3.1.2 build; and symbol compatibility,
+because the system keeps its own current OpenSSL libraries. Replacing the
+system libraries with 3.1.2 would buy nothing and break the second property.
+
+This is the approach upstream officially supports:
+
+- <https://github.com/openssl/openssl/blob/master/README-FIPS.md>
+- <https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4985>
+- <https://openssl-library.org/post/2025-03-11-fips-140-3/>
+
+> "You can build openssl-3.5.0, then build openssl-3.1.2, and simply copy the
+> fips.so module from your openssl-3.1.2 tree into the openssl-3.5.0 tree"
+
 ## Usage
 
 Build the FIPS provider module:
