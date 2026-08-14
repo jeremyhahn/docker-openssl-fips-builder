@@ -6,7 +6,11 @@ on:
       - 'v*'
 
 env:
-  OPENSSL_VERSION: '3.4.1'
+  # Must match the Makefile's documented pin. The FIPS provider has to be built
+  # from a FIPS 140-3 VALIDATED OpenSSL release (3.1.2, certificate #4985);
+  # this value is what the release notes advertise, so it must be the version
+  # actually built, not the newest OpenSSL.
+  OPENSSL_FIPS_VERSION: '3.1.2'
 
 permissions:
   contents: write
@@ -19,7 +23,7 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -54,7 +58,7 @@ jobs:
 
           Download the FIPS provider module from the assets below:
 
-          - \`fips.so\` - OpenSSL FIPS provider module (OpenSSL ${OPENSSL_VERSION})
+          - \`fips.so\` - OpenSSL FIPS provider module (OpenSSL ${OPENSSL_FIPS_VERSION})
           - \`fips.so.sha256\` - SHA256 checksum
 
           ### Verify Checksum
@@ -84,21 +88,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
-        run: docker build -t openssl-fips-provider-builder .
-
+      # make build is the contract (devops.md §4) and extracts artifacts with
+      # `docker cp` rather than a bind mount — a bind mount source is resolved
+      # by the docker daemon, which cannot see a job container's workspace.
       - name: Build FIPS provider
-        run: |
-          mkdir -p output
-          docker run --rm \
-            -v $(pwd)/output:/output \
-            -e OPENSSL_VERSION=${{ env.OPENSSL_VERSION }} \
-            openssl-fips-provider-builder
+        run: make build
+        env:
+          OPENSSL_FIPS_VERSION: ${{ env.OPENSSL_FIPS_VERSION }}
+
+      - name: Verify build artifacts
+        run: make test
 
       - name: Prepare release assets
         run: |
@@ -138,7 +142,7 @@ jobs:
           echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version**: ${{ needs.create-release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**OpenSSL Version**: ${{ env.OPENSSL_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**OpenSSL Version**: ${{ env.OPENSSL_FIPS_VERSION }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Artifacts Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

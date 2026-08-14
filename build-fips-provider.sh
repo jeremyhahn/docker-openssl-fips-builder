@@ -1,5 +1,9 @@
-#!/bin/sh
+#!/bin/bash
 # build-fips-provider.sh - Build OpenSSL FIPS provider module
+#
+# bash, not sh: this script relies on `set -o pipefail` and `echo -e`, neither
+# of which POSIX sh defines. Alpine's /bin/sh (busybox ash) happens to accept
+# both, so declaring sh worked by luck on this base image alone.
 set -euo pipefail
 
 # Configuration from environment or defaults
@@ -13,12 +17,12 @@ set -euo pipefail
 #   - https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4985
 #   - https://openssl-library.org/post/2025-03-11-fips-140-3/
 OPENSSL_FIPS_VERSION="${OPENSSL_FIPS_VERSION:-3.1.2}"
+OPENSSL_FIPS_CERTIFICATE="${OPENSSL_FIPS_CERTIFICATE:-#4985 (valid until March 10, 2030)}"
 OUTPUT_DIR="${OUTPUT_DIR:-/output}"
 
 # Colors
 GREEN='\033[0;32m'
 RED='\033[0;31m'
-BLUE='\033[0;34m'
 NC='\033[0m'
 
 log() {
@@ -34,8 +38,7 @@ log "=========================================="
 log "OpenSSL FIPS 140-3 Provider Build"
 log "=========================================="
 log "FIPS-Validated OpenSSL version: ${OPENSSL_FIPS_VERSION}"
-log "FIPS Certificate: #4985 (valid until March 10, 2030)"
-log "Compatible with: OpenSSL 3.0.x - 3.5.x+"
+log "FIPS Certificate: ${OPENSSL_FIPS_CERTIFICATE}"
 log "Output directory: ${OUTPUT_DIR}"
 log ""
 
@@ -117,28 +120,26 @@ log "Configuring OpenSSL with FIPS support..."
 
 log "✓ OpenSSL configured successfully"
 
-# Build ONLY the FIPS provider module
-# According to official OpenSSL FIPS documentation:
-#   - The FIPS provider module (fips.so) from OpenSSL 3.1.2 is FIPS 140-3 validated
-#   - This module is COMPATIBLE with ANY OpenSSL 3.x version (3.0 - 3.5+)
-#   - We should NOT replace the system OpenSSL libraries
-#   - Instead, we copy ONLY the validated fips.so to the system
+# Build ONLY the FIPS provider module.
 #
-# This approach:
-#   - Maintains FIPS compliance (using validated FIPS provider from 3.1.2)
-#   - Ensures symbol compatibility (using Alpine's system OpenSSL 3.5.4 libraries)
-#   - Is officially supported per OpenSSL documentation
+# Per the official OpenSSL FIPS documentation:
+#   - The FIPS provider module (fips.so) from OpenSSL 3.1.2 is FIPS 140-3
+#     validated.
+#   - That module is COMPATIBLE with ANY OpenSSL 3.x version (3.0 - 3.5+).
+#   - We must NOT replace the system OpenSSL libraries. Instead we copy ONLY
+#     the validated fips.so to the system.
 #
-# References:
+# This keeps FIPS compliance (the provider is the validated 3.1.2 build) while
+# keeping symbol compatibility (the system's own OpenSSL libraries are used),
+# and it is the approach upstream officially supports:
 #   - https://github.com/openssl/openssl/blob/master/README-FIPS.md
-#   - "The OpenSSL 3.1.2 FIPS module is compatible with any version of OpenSSL 3.0-3.5+"
-#   - "You can build openssl-3.5.0, then build openssl-3.1.2, and simply copy the
-#      fips.so module from your openssl-3.1.2 tree into the openssl-3.5.0 tree"
+#   - "You can build openssl-3.5.0, then build openssl-3.1.2, and simply copy
+#      the fips.so module from your openssl-3.1.2 tree into the openssl-3.5.0
+#      tree"
 log "Building ONLY the FIPS provider module (not complete OpenSSL)..."
 log "Using $(nproc) CPU cores"
 
-# Build only the FIPS provider module
-make build_modules -j$(nproc) || error "Failed to build FIPS provider module"
+make build_modules -j"$(nproc)" || error "Failed to build FIPS provider module"
 log "✓ FIPS provider module built successfully"
 
 # Install to staging directory
@@ -171,8 +172,7 @@ OpenSSL FIPS 140-3 Provider Module
 ===================================
 
 FIPS Validated Version: ${OPENSSL_FIPS_VERSION}
-Certificate: #4985
-Valid Until: March 10, 2030
+Certificate: ${OPENSSL_FIPS_CERTIFICATE}
 Build Date: $(date +'%Y-%m-%d %H:%M:%S')
 
 This package contains ONLY the FIPS provider module (fips.so).
@@ -180,17 +180,16 @@ This package contains ONLY the FIPS provider module (fips.so).
 IMPORTANT: This FIPS provider is compatible with ANY OpenSSL 3.x version.
 - Built from: OpenSSL ${OPENSSL_FIPS_VERSION} (FIPS 140-3 validated)
 - Compatible with: OpenSSL 3.0.x - 3.5.x+
-- Use with: Alpine's system OpenSSL package (currently 3.5.4)
 
 Installation:
-  1. Install Alpine's system OpenSSL: apk add openssl
+  1. Install system OpenSSL
   2. Copy fips.so to: /usr/lib/ossl-modules/fips.so
   3. Run: openssl fipsinstall -out /etc/ssl/fipsmodule.cnf -module /usr/lib/ossl-modules/fips.so
   4. Configure OpenSSL to use FIPS provider in /etc/ssl/openssl.cnf
 
 This approach:
-  - Maintains FIPS compliance (validated FIPS provider from 3.1.2)
-  - Ensures compatibility (uses Alpine's 3.5.4 libraries for system libraries)
+  - Maintains FIPS compliance (validated FIPS provider from ${OPENSSL_FIPS_VERSION})
+  - Ensures compatibility (uses the system's own OpenSSL libraries)
   - Follows official OpenSSL documentation
 
 References:
@@ -208,12 +207,12 @@ log "=========================================="
 log "FIPS 140-3 Provider Module Build Complete!"
 log "=========================================="
 log "FIPS-Validated OpenSSL version: ${OPENSSL_FIPS_VERSION}"
-log "Certificate: #4985 (valid until March 10, 2030)"
+log "Certificate: ${OPENSSL_FIPS_CERTIFICATE}"
 log "Output directory: ${OUTPUT_DIR}/usr/lib/ossl-modules"
 log ""
 log "Built component:"
 log "  - FIPS provider module: /usr/lib/ossl-modules/fips.so (${FIPS_SIZE} bytes)"
 log ""
 log "This FIPS provider module is compatible with OpenSSL 3.0.x - 3.5.x+"
-log "Use with Alpine's system OpenSSL package (apk add openssl)"
+log "Use with the system OpenSSL package"
 log ""

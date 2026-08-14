@@ -1,84 +1,189 @@
+# ci-template: v1 (adapted — container-builder repo, no Go code)
+#
+# Reconciled against software/templates/github-actions/ci.yml in the
+# automatethethings repo (devops.md §1/§8/§9). This repo builds a container
+# image and ships a binary artifact; it contains no Go source, so the Go half
+# of the §8 suite (gosec, govulncheck, go mod verify, golangci-lint,
+# staticcheck) has no analogue and is replaced by hadolint + shellcheck. Both
+# trivy gates (fs and image) apply unchanged. Structure — guarded GitHub-only
+# steps, trivy CLI on Gitea, explicit fail-closed gate — follows the template.
+
 name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [main, master]
   pull_request:
-    branches: [master, main]
+    branches: [main, master]
 
-env:
-  OPENSSL_VERSION: '3.4.1'
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    # Linters read their input on stdin. Mounting the workspace with
+    # `-v $(pwd):/mnt` would fail on a Gitea runner: bind mount sources are
+    # resolved by the docker daemon, which cannot see the job container's
+    # filesystem.
+    - name: Lint Dockerfile (hadolint)
+      run: |
+        docker run --rm -i hadolint/hadolint:latest \
+          hadolint --failure-threshold warning - < Dockerfile
+
+    - name: Lint shell scripts (shellcheck)
+      run: |
+        docker run --rm -i koalaman/shellcheck:stable \
+          --severity=warning - < build-fips-provider.sh
+
+  trivy:
+    name: Trivy
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    # Two paths for one gate (devops.md §8). trivy-action's setup step cannot
+    # authenticate to github.com from a Gitea runner and upload-sarif has no
+    # GHES-compatible endpoint there, so the action-based path is guarded on
+    # the server URL and Gitea gates with the trivy CLI below. Both run the
+    # same fs scan with the same severity threshold; only the SARIF upload to
+    # code scanning is GitHub-only.
+    - name: Trivy scan (SARIF for code scanning)
+      if: github.server_url == 'https://github.com'
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: fs
+        scan-ref: .
+        scanners: vuln,secret
+        format: sarif
+        output: trivy-results.sarif
+        exit-code: 0
+
+    - name: Upload Trivy SARIF
+      if: github.server_url == 'https://github.com'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: trivy-results.sarif
+        category: trivy-fs
+
+    - name: Trivy gate (fail on CRITICAL/HIGH)
+      if: github.server_url == 'https://github.com'
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: fs
+        scan-ref: .
+        scanners: vuln,secret
+        severity: CRITICAL,HIGH
+        exit-code: 1
+        format: table
+
+    - name: Install Trivy CLI (Gitea)
+      if: github.server_url != 'https://github.com'
+      run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+    # Source-tree scans do NOT use --ignore-unfixed (devops.md §8).
+    - name: Trivy gate (Gitea)
+      if: github.server_url != 'https://github.com'
+      run: trivy fs --scanners vuln,secret --severity CRITICAL,HIGH --exit-code 1 .
+
+  trivy-image:
+    name: Trivy Image
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    # devops.md §8 requires every image the repo builds to be scanned.
+    - name: Build image
+      run: docker build -t openssl-fips-provider-builder:ci .
+
+    - name: Install Trivy CLI (Gitea)
+      if: github.server_url != 'https://github.com'
+      run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+    # --ignore-unfixed is ratified for image scans (devops.md §8): the base
+    # image carries unfixable distro advisories at any given moment, so a raw
+    # gate would be permanently red. This gate means "a rebuild fixes this".
+    - name: Trivy image gate (Gitea)
+      if: github.server_url != 'https://github.com'
+      run: trivy image --scanners vuln,secret --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 openssl-fips-provider-builder:ci
+
+    - name: Trivy image gate (fail on CRITICAL/HIGH)
+      if: github.server_url == 'https://github.com'
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: image
+        image-ref: openssl-fips-provider-builder:ci
+        scanners: vuln,secret
+        severity: CRITICAL,HIGH
+        ignore-unfixed: true
+        exit-code: 1
+        format: table
+
   build:
     name: Build FIPS Provider
     runs-on: ubuntu-latest
+    needs: [lint, trivy, trivy-image]
+    timeout-minutes: 45
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v6
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+    # make build / make test are the contract (devops.md §4): CI runs exactly
+    # what a developer runs. The Makefile extracts artifacts with `docker cp`
+    # rather than a bind mount, which is what makes this work in a job
+    # container — see the comment on its build target.
+    - name: Build FIPS provider
+      run: make build
 
-      - name: Build Docker image
-        run: docker build -t openssl-fips-provider-builder .
+    - name: Verify build artifacts
+      run: make test
 
-      - name: Build FIPS provider
-        run: |
-          mkdir -p output
-          docker run --rm \
-            -v $(pwd)/output:/output \
-            -e OPENSSL_VERSION=${{ env.OPENSSL_VERSION }} \
-            openssl-fips-provider-builder
+    # upload-artifact v4+ refuses to run against any server that is not
+    # github.com — it detects one and reports "not currently supported on
+    # GHES", and Gitea presents as such (devops.md §1). The build and its
+    # verification have already happened by this point; only the upload is
+    # skipped.
+    - name: Upload artifacts
+      if: github.server_url == 'https://github.com'
+      uses: actions/upload-artifact@v6
+      with:
+        name: fips-provider
+        path: |
+          output/usr/lib/ossl-modules/fips.so
+          output/fips.so.sha256
+          output/openssl-fips-version.txt
+          output/README.txt
+        retention-days: 7
 
-      - name: Verify build artifacts
-        run: |
-          echo "Checking build artifacts..."
-
-          if [ ! -f output/usr/lib/ossl-modules/fips.so ]; then
-            echo "ERROR: FIPS module not found"
-            exit 1
-          fi
-
-          echo "✓ FIPS module exists"
-          ls -lh output/usr/lib/ossl-modules/fips.so
-
-          echo ""
-          echo "SHA256 checksum:"
-          sha256sum output/usr/lib/ossl-modules/fips.so
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: fips-provider-${{ env.OPENSSL_VERSION }}
-          path: |
-            output/usr/lib/ossl-modules/fips.so
-          retention-days: 7
-
-  test:
-    name: Test FIPS Provider
+  # The single required check (devops.md §1). Every job above appears in BOTH
+  # the needs list and the results check -- a gate that can pass vacuously is
+  # worse than no gate. join(needs.*.result) is deliberately not used: it
+  # evaluates empty on Gitea and reports success while jobs fail.
+  ci-gate:
+    name: CI Gate
     runs-on: ubuntu-latest
-    needs: build
+    if: always()
+    needs: [lint, trivy, trivy-image, build]
 
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: fips-provider-${{ env.OPENSSL_VERSION }}
-          path: output
-
-      - name: Verify FIPS module
-        run: |
-          echo "Verifying FIPS provider module..."
-
-          # Check file exists and is a shared library
-          file output/fips.so
-
-          # Check file size is reasonable (should be > 1MB)
-          SIZE=$(stat -c %s output/fips.so)
-          if [ "$SIZE" -lt 1000000 ]; then
-            echo "WARNING: FIPS module seems too small ($SIZE bytes)"
-          else
-            echo "✓ FIPS module size: $SIZE bytes"
-          fi
+    - name: Fail closed on any non-success
+      run: |
+        check() { case "$2" in success) echo "OK   $1";; *) echo "FAIL $1 ($2)"; BAD=1;; esac; }
+        BAD=0
+        check lint        "${{ needs.lint.result }}"
+        check trivy       "${{ needs.trivy.result }}"
+        check trivy-image "${{ needs.trivy-image.result }}"
+        check build       "${{ needs.build.result }}"
+        exit $BAD
