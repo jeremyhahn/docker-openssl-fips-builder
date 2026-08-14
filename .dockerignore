@@ -1,0 +1,29 @@
+# Keep the build context small.
+#
+# The Dockerfile COPYs only build-fips-provider.sh, so nothing here is at risk
+# of being baked into the image — but the whole directory is still sent to the
+# daemon on every build, and output/ holds the built FIPS module. Excluding it
+# keeps `make build` and `make image-scan` from shipping the previous build's
+# artifacts to the daemon each time.
+
+# VCS and CI config
+.git/
+.gitignore
+.github/
+
+# Build artifacts from a previous run
+output/
+
+# Editor, agent and OS noise
+.idea/
+.vscode/
+.claude/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Docker files themselves
+.dockerignore
+Dockerfile
