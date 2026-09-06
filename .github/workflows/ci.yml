@@ -20,6 +20,29 @@ on:
   # workflow can be dispatched by hand (ci-template v1.3).
   workflow_dispatch:
 
+# Cancel a CI run that a newer push to the same ref has superseded. Portfolio
+# ruling; this repo benefits most, because `trivy-image` and `build` each do a
+# full container build and hold a runner slot for tens of minutes.
+#
+# The group is keyed on the REF and cancels in progress. That is not what
+# dcecd22 ("ci: drop concurrency from workflows") removed: those blocks were
+# job-level, `cancel-in-progress: false`, and keyed `task-worker-<repository>`
+# with NO ref component, so every task worker in the repo shared one group and
+# collided with its siblings. The group was saturated, not "unoccupied", and
+# Gitea cannot queue -- so it cancelled. Ref-keyed groups cancel the OLDER run
+# and let the newest survive, which is the behaviour wanted here.
+#
+# `cancel-in-progress` does NOT evaluate expressions on Gitea 1.27.1 -- any
+# non-empty value is truthy -- so it is written as the literal `true`.
+#
+# Leading with `github.workflow` scopes this to CI: it structurally cannot
+# cancel the separate `Code Review` workflow that gates merges. `release.yml`
+# deliberately has no such block -- it publishes container images, and
+# cancelling a release mid-publish risks a partial push to the registry.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   security-events: write
