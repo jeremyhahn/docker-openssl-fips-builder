@@ -15,14 +15,14 @@ None. No Gitea milestone is open; target kind RC, projected date not set.
 
 ## Now
 
-- [#7](http://git.example.internal/jeremyhahn/docker-openssl-fips-builder/issues/7) deterministic trivy-image gate on a vulnerable image — blocked: labelled task:blocked
-- [#13](http://git.example.internal/jeremyhahn/docker-openssl-fips-builder/issues/13) signed release artifacts (IS-14) — open
-- [#14](http://git.example.internal/jeremyhahn/docker-openssl-fips-builder/issues/14) docs conformance: index and serena — open
+- [#7](../../issues/7) deterministic trivy-image gate on a vulnerable image — blocked: labelled task:blocked
+- [#13](../../issues/13) signed release artifacts (IS-14) — open
+- [#14](../../issues/14) docs conformance: index and serena — open
 - readiness: release artifacts signed before the first RC (#13) — open
 
 ## Next
 
-- [#10](http://git.example.internal/jeremyhahn/docker-openssl-fips-builder/issues/10) decommissioned task-worker.yml removed from CI — open
+- [#10](../../issues/10) decommissioned task-worker.yml removed from CI — open
 
 ## Later
 
