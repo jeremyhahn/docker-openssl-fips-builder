@@ -62,9 +62,27 @@ test:
 	@echo "✓ SHA256 checksum verified"
 	@echo "Built from OpenSSL $$(cat $(OUTPUT_DIR)/openssl-fips-version.txt)"
 
+# Gate tools run from PATH must be present: a missing tool fails the target
+# with an install hint, so a gate never passes by not running (devops.md §8).
+# $(call require-tool,<tool>,<install hint>)
+define require-tool
+	@command -v $(1) >/dev/null 2>&1 || { \
+		echo "ERROR: $(1) not found on PATH. Install it: $(2)"; \
+		exit 1; \
+	}
+endef
+
+ACTIONLINT_INSTALL := go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+TRIVY_INSTALL := https://trivy.dev/latest/getting-started/installation/ (the release tarball)
+
+# actionlint validates workflow syntax, expressions and runner labels before CI
+# does (devops.md §4). It reads .github/actionlint.yaml itself when present.
 # Linters are piped their input on stdin: a `-v $(PWD):/mnt` bind mount fails
 # in CI for the same daemon-path reason documented on the build target.
 lint:
+	@echo "Linting workflows (actionlint)..."
+	$(call require-tool,actionlint,$(ACTIONLINT_INSTALL))
+	actionlint
 	@echo "Linting Dockerfile (hadolint)..."
 	docker run --rm -i hadolint/hadolint:latest \
 		hadolint --failure-threshold warning - < Dockerfile
@@ -77,6 +95,7 @@ lint:
 # Dockerfile/shell linters plus both trivy scans.
 fs-scan:
 	@echo "Scanning source tree (trivy fs)..."
+	$(call require-tool,trivy,$(TRIVY_INSTALL))
 	trivy fs --scanners vuln,secret \
 		--severity CRITICAL,HIGH --exit-code 1 .
 
@@ -85,6 +104,7 @@ fs-scan:
 # red. The fs scan above deliberately does NOT use it.
 image-scan: image
 	@echo "Scanning image (trivy image)..."
+	$(call require-tool,trivy,$(TRIVY_INSTALL))
 	trivy image --scanners vuln,secret \
 		--severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 $(DOCKER_IMAGE)
 
