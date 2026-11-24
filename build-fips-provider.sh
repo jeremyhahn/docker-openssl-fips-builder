@@ -1,21 +1,8 @@
 #!/bin/bash
-# build-fips-provider.sh - Build OpenSSL FIPS provider module
-#
-# bash, not sh: this script relies on `set -o pipefail` and `echo -e`, neither
-# of which POSIX sh defines. Alpine's /bin/sh (busybox ash) happens to accept
-# both, so declaring sh worked by luck on this base image alone.
+# build-fips-provider.sh builds the OpenSSL FIPS provider module.
 set -euo pipefail
 
-# Configuration from environment or defaults
-# CRITICAL: We MUST use a FIPS 140-3 VALIDATED OpenSSL version to build the FIPS provider
-# According to official OpenSSL FIPS documentation:
-#   - OpenSSL 3.1.2 is FIPS 140-3 validated (Certificate #4985, valid until March 10, 2030)
-#   - The validated FIPS provider is compatible with ANY OpenSSL 3.x version (3.0-3.5+)
-#   - Alpine 3.22.2 provides OpenSSL 3.5.4, which will use this validated provider
-# References:
-#   - https://github.com/openssl/openssl/blob/master/README-FIPS.md
-#   - https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4985
-#   - https://openssl-library.org/post/2025-03-11-fips-140-3/
+# OpenSSL 3.1.2 is FIPS 140-3 validated (certificate #4985); its provider works with any OpenSSL 3.x.
 OPENSSL_FIPS_VERSION="${OPENSSL_FIPS_VERSION:-3.1.2}"
 OPENSSL_FIPS_CERTIFICATE="${OPENSSL_FIPS_CERTIFICATE:-#4985 (valid until March 10, 2030)}"
 OUTPUT_DIR="${OUTPUT_DIR:-/output}"
@@ -101,11 +88,7 @@ tar -xzf "${OPENSSL_TARBALL}" || error "Failed to extract OpenSSL"
 cd "openssl-${OPENSSL_FIPS_VERSION}" || error "Failed to enter OpenSSL directory"
 log "✓ Extracted OpenSSL source"
 
-# Configure OpenSSL with FIPS support
-# Use same configuration as reference project:
-# - --prefix=/usr (NOT /usr/local!)
-# - --libdir=lib (NOT lib64!)
-# - --openssldir=/etc/ssl
+# Configure OpenSSL with FIPS support, installing under /usr/lib.
 log "Configuring OpenSSL with FIPS support..."
 ./Configure linux-x86_64 \
     --prefix=/usr \
@@ -131,7 +114,7 @@ log "✓ FIPS provider module built successfully"
 # Install to staging directory
 mkdir -p "${OUTPUT_DIR}/usr/lib/ossl-modules"
 
-# Copy ONLY the FIPS provider module
+# Copy only the FIPS provider module.
 FIPS_MODULE_SRC="providers/fips.so"
 FIPS_MODULE_DEST="${OUTPUT_DIR}/usr/lib/ossl-modules/fips.so"
 

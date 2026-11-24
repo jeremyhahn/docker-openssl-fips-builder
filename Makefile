@@ -2,12 +2,7 @@
 #
 # Builds the OpenSSL FIPS 140-3 provider module inside a container.
 
-# DOCUMENTED PIN (devops.md §9): the FIPS provider must be built from a
-# FIPS 140-3 *validated* OpenSSL release. 3.1.2 is the validated one
-# (certificate #4985). Do NOT raise this to track the latest OpenSSL — a newer
-# release is not validated, and the fips.so it produces would not be FIPS
-# compliant. §9's "latest everything" does not apply here: the validation IS
-# the artifact. The base image and its packages do track latest.
+# FIPS 140-3 validated OpenSSL release (certificate #4985); a newer release is not validated.
 OPENSSL_FIPS_VERSION ?= 3.1.2
 OUTPUT_DIR ?= $(PWD)/output
 DOCKER_IMAGE ?= openssl-fips-provider-builder
@@ -24,12 +19,7 @@ all: build
 image:
 	docker build -t $(DOCKER_IMAGE) .
 
-# Artifacts are copied out of a stopped container rather than bind-mounted.
-# A bind mount source is resolved by the docker DAEMON, not the client, so in
-# CI — where the job itself runs inside a container sharing the host's docker
-# socket — the workspace path does not exist for the daemon and `docker run`
-# dies with exit 125. `docker cp` streams through the API and extracts on the
-# client side, so it lands in the workspace on every host.
+# docker cp, not a bind mount: in CI the daemon cannot see the job's workspace path.
 build: image
 	@echo "Building OpenSSL FIPS provider module..."
 	@docker rm -f $(BUILD_CONTAINER) >/dev/null 2>&1 || true
