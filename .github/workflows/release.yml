@@ -6,10 +6,7 @@ on:
       - 'v*'
 
 env:
-  # Must match the Makefile's documented pin. The FIPS provider has to be built
-  # from a FIPS 140-3 VALIDATED OpenSSL release (3.1.2, certificate #4985);
-  # this value is what the release notes advertise, so it must be the version
-  # actually built, not the newest OpenSSL.
+  # The validated FIPS 140-3 OpenSSL release the provider is built from; must match the Makefile pin.
   OPENSSL_FIPS_VERSION: '3.1.2'
 
 permissions:

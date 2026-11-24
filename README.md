@@ -18,8 +18,8 @@ is installed.
 
 Configure flags:
 
-- `--prefix=/usr` (NOT `/usr/local`)
-- `--libdir=lib` (NOT `lib64`)
+- `--prefix=/usr` (not `/usr/local`)
+- `--libdir=lib` (not `lib64`)
 - `--openssldir=/etc/ssl`
 - `enable-fips`
 - Security hardening: `no-ssl3`, `no-weak-ssl-ciphers`,
@@ -111,5 +111,5 @@ Artifacts are copied out of a stopped container with `docker cp` rather than
 bind-mounted. Bind mount sources are resolved by the docker *daemon*, so in CI
 — where the job itself runs in a container sharing the host's docker socket —
 a workspace path does not exist for the daemon and `docker run` fails with
-exit 125. `docker cp` works on every host, and as a bonus leaves the artifacts
-owned by the invoking user instead of root.
+exit 125. `docker cp` works on every host and leaves the artifacts owned by the
+invoking user.

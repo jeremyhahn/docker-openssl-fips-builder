@@ -1,5 +1,3 @@
-**Status: CURRENT** | Last verified: 2026-10-09
-
 # Documentation index
 
 This repository produces a Docker image that builds the OpenSSL FIPS provider

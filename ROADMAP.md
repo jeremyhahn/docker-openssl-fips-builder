@@ -1,17 +1,15 @@
 # docker-openssl-fips-builder roadmap
 
-> **Status: REFERENCE** · Owner: Software Department · Last verified: 2026-10-08
 > Changes are proposed by docs-only PR.
 
 ## Mission
 
 Build the FIPS OpenSSL provider image: the validated OpenSSL 3.1.2 `fips.so`.
 Ship only the provider module, checksummed, for any OpenSSL 3.x host to install.
-A build project owned by `agent-docker-openssl-fips-builder` in dept-software.
 
 ## Current milestone
 
-None. No Gitea milestone is open; target kind RC, projected date not set.
+None open; target kind RC.
 
 ## Now
 
